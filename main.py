@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.io import wavfile
 import os
+import re
 
 
 class SoundWaveFactory:
@@ -100,6 +101,43 @@ class SoundWaveFactory:
 
         return wave_data
 
+    def combine_waves(self, *waves):
+        """Combine multiple sound waves into one."""
+        max_length = max(len(wave) for wave in waves)
+        combined_wave = np.zeros(max_length)
+
+        for wave in waves:
+            combined_wave[:len(wave)] += wave
+
+        combined_wave = np.int16(combined_wave / np.max(np.abs(combined_wave)) * self.max_amplitude)
+
+        return combined_wave
+
+    def generate_melody_from_text(self, text):
+        """Generate a melody from a text string of notes."""
+        note_pattern = r'(\w#?\d)(\s*\d*\.?\d*s)?'
+        matches = re.findall(note_pattern, text)
+        waves = []
+
+        for match in matches:
+            note, duration = match
+            duration = duration.strip() if duration else '1s'
+
+            if note in self.NOTES:
+                frequency = self.NOTES[note]
+                duration_seconds = float(duration[:-1])
+
+                sound_wave = self._get_normed_sin(frequency)[:int(self.sampling_rate * duration_seconds)].astype(
+                    np.int16)
+                waves.append(sound_wave)
+            elif note.startswith('(') and note.endswith(')'):
+                nested_notes = note[1:-1].strip().split()
+                nested_wave = self.combine_waves(*[self.create_note(n) for n in nested_notes])
+                waves.append(nested_wave)
+
+        combined_wave = self.combine_waves(*waves)
+        return combined_wave
+
 
 if __name__ == "__main__":
     factory = SoundWaveFactory()
@@ -119,3 +157,10 @@ if __name__ == "__main__":
     print('Normalized Waves:')
 
     factory.print_wave_details(normed_waves)
+
+    melody_text = "g4 0.2s b4 0.2s (g3 d5 g5) 0.5s"
+    melody_wave = factory.generate_melody_from_text(melody_text)
+
+    factory.save_wave(melody_wave, file_name='melody', file_type='wav')
+    print("Melody Waves:")
+    factory.print_wave_details(melody_wave)
